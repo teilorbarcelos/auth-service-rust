@@ -93,7 +93,7 @@ impl AuthModuleService {
             })
             .collect::<Vec<_>>();
 
-        let perm_key = format!("{}permissions", p.redis_permissions.replace("{}", &user_record.id));
+        let perm_key = p.redis_permissions.replace("{}", &user_record.id);
         if !allowed_actions.is_empty() {
             cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
         } else {
@@ -269,7 +269,7 @@ impl AuthModuleService {
             })
             .collect::<Vec<_>>();
 
-        let perm_key = format!("{}permissions", p.redis_permissions.replace("{}", &user_record.id));
+        let perm_key = p.redis_permissions.replace("{}", &user_record.id);
         if !allowed_actions.is_empty() {
             cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
         } else {

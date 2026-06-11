@@ -26,6 +26,21 @@ impl Cache {
             .map_err(|e| AppError::Internal(format!("Erro ao obter conexão do Redis: {}", e)))
     }
 
+    fn token_key_str(&self, user_id: &str, token: &str) -> String {
+        let key = self
+            .profile
+            .redis_token_key
+            .replace("{user_id}", user_id)
+            .replace("{role_id}", "")
+            .replace("{token}", token);
+        // Fallback: se os placeholders nomeados não foram usados, substitui {} sequencialmente
+        if key.contains("{user_id}") || key.contains("{role_id}") || key.contains("{token}") {
+            key
+        } else {
+            key.replacen("{}", user_id, 1).replacen("{}", token, 1)
+        }
+    }
+
     pub async fn create_session(
         &self,
         user_id: &str,
@@ -38,12 +53,7 @@ impl Cache {
             .redis_session_version
             .replace("{}", user_id);
 
-        let token_key = self
-            .profile
-            .redis_token_key
-            .replace("{user_id}", user_id)
-            .replace("{role_id}", "")
-            .replace("{token}", token);
+        let token_key = self.token_key_str(user_id, token);
 
         // Garante que a chave de versão existe (SET NX = cria se não existir)
         redis::cmd("SET")
@@ -78,12 +88,7 @@ impl Cache {
             .profile
             .redis_session_version
             .replace("{}", user_id);
-        let token_key = self
-            .profile
-            .redis_token_key
-            .replace("{user_id}", user_id)
-            .replace("{role_id}", "")
-            .replace("{token}", token);
+        let token_key = self.token_key_str(user_id, token);
 
         let result: Vec<Option<i64>> = redis::cmd("MGET")
             .arg(&token_key)
@@ -148,12 +153,7 @@ impl Cache {
 
     pub async fn delete_session(&self, user_id: &str, token: &str) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let token_key = self
-            .profile
-            .redis_token_key
-            .replace("{user_id}", user_id)
-            .replace("{role_id}", "")
-            .replace("{token}", token);
+        let token_key = self.token_key_str(user_id, token);
         let _: () = redis::cmd("DEL")
             .arg(&token_key)
             .query_async(&mut conn)

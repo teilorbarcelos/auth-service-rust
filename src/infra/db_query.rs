@@ -1,6 +1,6 @@
 use crate::{
     config::BackendProfile,
-    models::{auth, role, role_feature, user},
+    models::{auth, feature, role, role_feature, user},
 };
 use sea_orm::{
     sea_query::Value,
@@ -73,9 +73,14 @@ pub async fn find_auth_by_id(
     p: &BackendProfile,
     id: &str,
 ) -> Result<Option<auth::Model>, DbErr> {
+    // Usa CAST para compatibilidade entre INT4 (Rust) e INT8 (Go)
+    let cols = format!(
+        r#"id, password, request_password_token, request_password_expiration, retries,
+           first_access, active, is_deleted, deleted_at, created_at, updated_at"#
+    );
     let sql = format!(
-        r#"SELECT * FROM "{}" WHERE id = $1 LIMIT 1"#,
-        p.table_auth
+        r#"SELECT {} FROM "{}" WHERE id = $1 LIMIT 1"#,
+        cols, p.table_auth
     );
     query_one(db, sql, vec![id.into()]).await
 }
