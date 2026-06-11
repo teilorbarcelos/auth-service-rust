@@ -8,7 +8,7 @@ use auth_service_rust::{
 };
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use tower::ServiceExt;
 
 async fn build_app() -> (axum::Router, AppConfig) {
@@ -29,41 +29,23 @@ async fn build_app() -> (axum::Router, AppConfig) {
 }
 
 /// Cria um usuário único por teste para evitar race conditions
-async fn create_http_test_user(db: &DatabaseConnection) -> (String, String, String) {
+async fn create_http_test_user(db: &DatabaseConnection, config: &AppConfig) -> (String, String, String) {
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    let p = &config.profile;
     let uid: String = uuid::Uuid::new_v4().to_string().chars().take(32).collect();
     let email = format!("http-{}@test.com", uid);
     let password = "test-pass-123";
-
     let password_hash = AuthService::hash_password(password).unwrap();
     let auth_id = format!("ha{}", &uid[..30]);
-    let auth = models::auth::ActiveModel {
-        id: Set(auth_id.clone()),
-        password: Set(Some(password_hash)),
-        active: Set(true),
-        is_deleted: Set(Some(false)),
-        deleted_at: Set(None),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-        ..Default::default()
-    };
-    auth.insert(db).await.expect("create auth");
-
     let user_id = format!("hu{}", &uid[..30]);
-    let user = models::user::ActiveModel {
-        id: Set(user_id.clone()),
-        name: Set("HTTP Test User".to_string()),
-        email: Set(email.clone()),
-        id_role: Set("administrator".to_string()),
-        id_auth: Set(Some(auth_id)),
-        active: Set(true),
-        is_deleted: Set(Some(false)),
-        deleted_at: Set(None),
-        created_at: Set(chrono::Utc::now().into()),
-        updated_at: Set(chrono::Utc::now().into()),
-        ..Default::default()
-    };
-    user.insert(db).await.expect("create user");
-
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        format!(r#"INSERT INTO "{}" (id, password, active, is_deleted, created_at, updated_at) VALUES ($1, $2, true, false, NOW(), NOW())"#, p.table_auth),
+        vec![auth_id.clone().into(), password_hash.into()],
+    )).await.expect("create auth");
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        format!(r#"INSERT INTO "{}" (id, name, email, id_role, id_auth, active, is_deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, true, false, NOW(), NOW())"#, p.table_user),
+        vec![user_id.clone().into(), "HTTP Test User".into(), email.clone().into(), "administrator".into(), auth_id.into()],
+    )).await.expect("create user");
     (email, password.to_string(), user_id)
 }
 
@@ -198,7 +180,7 @@ async fn test_me_endpoint_requires_auth() {
 async fn test_me_endpoint_with_token() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db).await;
+    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
 
     // Login with test user
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
@@ -380,7 +362,7 @@ async fn test_login_without_body() {
 async fn test_login_then_logout() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db).await;
+    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
 
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
     let login = app
@@ -428,7 +410,7 @@ async fn test_login_then_logout() {
 async fn test_login_then_refresh() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db).await;
+    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
 
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
     let login = app
@@ -511,7 +493,7 @@ async fn test_me_with_fake_bearer_token() {
 async fn test_revoked_token_rejected() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, user_id) = create_http_test_user(&db).await;
+    let (_email, password, user_id) = create_http_test_user(&db, &config).await;
 
     // Login
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();

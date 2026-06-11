@@ -346,8 +346,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_login_role_not_found() {
+        let config = AppConfig::load();
+        // Este teste usa entity inserts (PascalCase). Só roda com perfil Rust/Pascal.
+        if config.profile.name != "rust" {
+            return;
+        }
         if let Some(db) = get_real_db().await {
-            let config = AppConfig::load();
             let cache = Cache::new(
                 &config.redis_url,
                 config.profile.clone(),
