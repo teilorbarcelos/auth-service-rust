@@ -1,6 +1,7 @@
 use auth_service_rust::{
     config::AppConfig,
     infra::{cache::Cache, database},
+    middleware,
     modules,
 };
 use axum::Router;
@@ -37,7 +38,10 @@ async fn shutdown_signal() {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
     tracing::info!("🚀 Iniciando Auth Service (Rust)...");
@@ -117,6 +121,9 @@ async fn main() {
     let app = Router::new()
         .merge(api_router)
         .merge(obs_router)
+        .layer(axum::middleware::from_fn(
+            middleware::request_log::request_logging_middleware,
+        ))
         .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
