@@ -324,10 +324,26 @@ mod tests {
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, Set, Statement};
 
     async fn get_real_db() -> Option<DatabaseConnection> {
+        use sea_orm::ConnectionTrait;
         let config = AppConfig::load();
         let db = sea_orm::Database::connect(&config.database_url)
             .await
             .ok()?;
+
+        // Verifica se as tabelas necessárias existem (CI pode não ter migrations)
+        let check = db
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='Auth')".to_owned(),
+            ))
+            .await
+            .ok()?
+            .and_then(|r| r.try_get::<bool>("", "exists").ok())
+            .unwrap_or(false);
+
+        if !check {
+            return None;
+        }
 
         Some(db)
     }
