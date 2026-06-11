@@ -4,7 +4,8 @@ use crate::{
     infra::cache::Cache,
     middleware::auth::CurrentUser,
     modules::auth::schemas::{
-        AuthResponse, LoginRequest, RefreshRequest, SimpleStatusResponse, UserMeResponse,
+        AuthResponse, JwksResponse, LoginRequest, RefreshRequest, SimpleStatusResponse,
+        UserMeResponse,
     },
     modules::auth::service::AuthModuleService,
 };
@@ -46,4 +47,8 @@ pub async fn refresh_handler(
     let auth_data =
         AuthModuleService::refresh(&payload.refresh_token, &db, &cache, &config).await?;
     Ok(Json(auth_data))
+}
+
+pub async fn jwks_handler() -> Json<JwksResponse> {
+    Json(JwksResponse { keys: vec![] })
 }

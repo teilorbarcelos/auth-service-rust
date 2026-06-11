@@ -1,5 +1,20 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize)]
+pub struct Jwk {
+    pub kty: String,
+    pub kid: String,
+    pub r#use: String,
+    pub alg: String,
+    pub n: String,
+    pub e: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JwksResponse {
+    pub keys: Vec<Jwk>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub email: String,

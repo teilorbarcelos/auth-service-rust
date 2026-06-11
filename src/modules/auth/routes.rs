@@ -2,7 +2,9 @@ use crate::{
     config::AppConfig,
     infra::cache::Cache,
     middleware::auth::auth_middleware,
-    modules::auth::controller::{get_me_handler, login_handler, logout_handler, refresh_handler},
+    modules::auth::controller::{
+        get_me_handler, jwks_handler, login_handler, logout_handler, refresh_handler,
+    },
 };
 use axum::{
     middleware::from_fn_with_state,
@@ -17,6 +19,7 @@ pub fn router(db: DatabaseConnection, cache: Cache, config: AppConfig) -> Router
     let public_routes = Router::new()
         .route("/login", post(login_handler))
         .route("/refresh", post(refresh_handler))
+        .route("/.well-known/jwks.json", get(jwks_handler))
         .with_state(state.clone());
 
     let private_routes = Router::new()
