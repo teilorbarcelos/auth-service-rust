@@ -5,7 +5,7 @@ use auth_service_rust::{
 };
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use tower::ServiceExt;
 
 async fn build_app() -> (axum::Router, AppConfig) {

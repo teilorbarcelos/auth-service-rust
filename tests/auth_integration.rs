@@ -6,7 +6,6 @@ use auth_service_rust::{
     modules::auth::{schemas::LoginRequest, service::AuthModuleService},
 };
 use axum::response::IntoResponse;
-use sea_orm::ColumnTrait;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 
 async fn connect_db(config: &AppConfig) -> DatabaseConnection {
