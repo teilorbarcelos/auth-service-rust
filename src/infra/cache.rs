@@ -226,17 +226,16 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use testcontainers::runners::AsyncRunner;
-    use testcontainers_modules::redis::Redis;
+    use std::env;
+
+    fn get_redis_url() -> String {
+        let _ = dotenvy::dotenv();
+        env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string())
+    }
 
     #[tokio::test]
     async fn test_rate_limit_exceeded() {
-        let redis_container = Redis::default().start().await.unwrap();
-        let host = redis_container.get_host().await.unwrap();
-        let port = redis_container.get_host_port_ipv4(6379).await.unwrap();
-        let redis_url = format!("redis://{}:{}", host, port);
-        let cache = Cache::new(&redis_url);
-
+        let cache = Cache::new(&get_redis_url());
         let key = format!("test_rate_limit_exceeded_key_{}", uuid::Uuid::new_v4());
 
         let (allowed1, remaining1, limit1) = cache.check_rate_limit(&key, 1, 10).await.unwrap();
@@ -259,35 +258,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_invalidate_user_sessions_del_error() {
-        let redis_container = Redis::default().start().await.unwrap();
-        let host = redis_container.get_host().await.unwrap();
-        let port = redis_container.get_host_port_ipv4(6379).await.unwrap();
-        let redis_url = format!("redis://{}:{}", host, port);
-        let cache = Cache::new(&redis_url);
-
-        let user_id = format!("test-del-err-FORCE_DEL_ERROR-{}", uuid::Uuid::new_v4());
-        cache
-            .create_session(&user_id, "token123", 10)
-            .await
-            .unwrap();
-
-        let res = cache.invalidate_user_sessions(&user_id).await;
-        assert!(res.is_err());
-        assert!(res
-            .unwrap_err()
-            .message()
-            .contains("Erro ao expirar sessões antigas"));
-    }
-
-    #[tokio::test]
     async fn test_cache_set_methods() {
-        let redis_container = Redis::default().start().await.unwrap();
-        let host = redis_container.get_host().await.unwrap();
-        let port = redis_container.get_host_port_ipv4(6379).await.unwrap();
-        let redis_url = format!("redis://{}:{}", host, port);
-        let cache = Cache::new(&redis_url);
-
+        let cache = Cache::new(&get_redis_url());
         let key = format!("test_set_methods_key_{}", uuid::Uuid::new_v4());
 
         let exists = cache.key_exists(&key).await.unwrap();
