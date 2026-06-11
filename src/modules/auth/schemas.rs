@@ -1,19 +1,18 @@
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize)]
 pub struct RefreshRequest {
     #[serde(rename = "refreshToken")]
     pub refresh_token: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct PermissionInfo {
     pub feature: String,
     pub create: bool,
@@ -22,14 +21,14 @@ pub struct PermissionInfo {
     pub delete: bool,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct RoleInfo {
     pub id: String,
     pub name: String,
     pub permissions: Vec<PermissionInfo>,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub id: String,
     pub name: String,
@@ -37,7 +36,7 @@ pub struct UserInfo {
     pub role: RoleInfo,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub token: String,
     #[serde(rename = "refreshToken")]
@@ -45,17 +44,17 @@ pub struct AuthResponse {
     pub user: UserInfo,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct UserMeResponse {
     pub user: UserInfo,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct SimpleStatusResponse {
     pub status: bool,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
+#[derive(Debug, Serialize)]
 pub struct RefreshResponse {
     pub token: String,
     #[serde(rename = "refreshToken")]

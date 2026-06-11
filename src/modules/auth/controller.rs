@@ -11,16 +11,6 @@ use crate::{
 use axum::{extract::State, Extension, Json};
 use sea_orm::DatabaseConnection;
 
-#[utoipa::path(
-    post,
-    path = "/v1/auth/login",
-    request_body = LoginRequest,
-    responses(
-        (status = 200, description = "User authenticated successfully", body = AuthResponse),
-        (status = 400, description = "Invalid credentials or request data")
-    ),
-    tag = "Auth"
-)]
 pub async fn login_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     AppJson(payload): AppJson<LoginRequest>,
@@ -30,18 +20,6 @@ pub async fn login_handler(
     Ok(Json(auth_data))
 }
 
-#[utoipa::path(
-    get,
-    path = "/v1/auth/me",
-    responses(
-        (status = 200, description = "Current user retrieved successfully", body = UserMeResponse),
-        (status = 401, description = "Unauthorized")
-    ),
-    security(
-        ("bearerAuth" = [])
-    ),
-    tag = "Auth"
-)]
 pub async fn get_me_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     Extension(current_user): Extension<CurrentUser>,
@@ -51,18 +29,6 @@ pub async fn get_me_handler(
     Ok(Json(me_data))
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/auth/logout",
-    responses(
-        (status = 200, description = "Logged out successfully", body = SimpleStatusResponse),
-        (status = 401, description = "Unauthorized")
-    ),
-    security(
-        ("bearerAuth" = [])
-    ),
-    tag = "Auth"
-)]
 pub async fn logout_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     Extension(current_user): Extension<CurrentUser>,
@@ -72,16 +38,6 @@ pub async fn logout_handler(
     Ok(Json(response))
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/auth/refresh",
-    request_body = RefreshRequest,
-    responses(
-        (status = 200, description = "Token refreshed successfully", body = AuthResponse),
-        (status = 400, description = "Invalid refresh token")
-    ),
-    tag = "Auth"
-)]
 pub async fn refresh_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     AppJson(payload): AppJson<RefreshRequest>,

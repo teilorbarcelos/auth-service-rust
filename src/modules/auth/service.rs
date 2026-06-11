@@ -281,9 +281,6 @@ mod tests {
             .await
             .ok()?;
 
-        use sea_orm_migration::MigratorTrait;
-        crate::migration::Migrator::up(&db, None).await.ok()?;
-
         Some(db)
     }
 
