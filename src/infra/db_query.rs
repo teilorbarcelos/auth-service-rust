@@ -1,5 +1,5 @@
 use crate::{
-    config::TableNames,
+    config::BackendProfile,
     models::{auth, role, role_feature, user},
 };
 use sea_orm::{
@@ -34,60 +34,60 @@ where
 
 pub async fn find_user_by_email(
     db: &DatabaseConnection,
-    tn: &TableNames,
+    p: &BackendProfile,
     email: &str,
 ) -> Result<Option<user::Model>, DbErr> {
     let sql = format!(
         r#"SELECT * FROM "{}" WHERE email = $1 AND ("is_deleted" IS NULL OR "is_deleted" = false) LIMIT 1"#,
-        tn.user
+        p.table_user
     );
     query_one(db, sql, vec![email.into()]).await
 }
 
 pub async fn find_user_by_id(
     db: &DatabaseConnection,
-    tn: &TableNames,
+    p: &BackendProfile,
     id: &str,
 ) -> Result<Option<user::Model>, DbErr> {
     let sql = format!(
         r#"SELECT * FROM "{}" WHERE id = $1 LIMIT 1"#,
-        tn.user
+        p.table_user
     );
     query_one(db, sql, vec![id.into()]).await
 }
 
 pub async fn find_role_by_id(
     db: &DatabaseConnection,
-    tn: &TableNames,
+    p: &BackendProfile,
     id: &str,
 ) -> Result<Option<role::Model>, DbErr> {
     let sql = format!(
         r#"SELECT * FROM "{}" WHERE id = $1 AND ("is_deleted" IS NULL OR "is_deleted" = false) LIMIT 1"#,
-        tn.role
+        p.table_role
     );
     query_one(db, sql, vec![id.into()]).await
 }
 
 pub async fn find_auth_by_id(
     db: &DatabaseConnection,
-    tn: &TableNames,
+    p: &BackendProfile,
     id: &str,
 ) -> Result<Option<auth::Model>, DbErr> {
     let sql = format!(
         r#"SELECT * FROM "{}" WHERE id = $1 LIMIT 1"#,
-        tn.auth
+        p.table_auth
     );
     query_one(db, sql, vec![id.into()]).await
 }
 
 pub async fn find_permissions_by_role(
     db: &DatabaseConnection,
-    tn: &TableNames,
+    p: &BackendProfile,
     role_id: &str,
 ) -> Result<Vec<role_feature::Model>, DbErr> {
     let sql = format!(
         r#"SELECT * FROM "{}" WHERE id_role = $1"#,
-        tn.role_feature
+        p.table_role_feature
     );
     query_all(db, sql, vec![role_id.into()]).await
 }

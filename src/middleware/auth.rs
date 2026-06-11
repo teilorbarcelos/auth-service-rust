@@ -39,13 +39,15 @@ pub async fn auth_middleware(
 
     let claims: Claims = AuthService::verify_token(token, &config.jwt_secret)?;
 
-    let is_valid = cache
-        .validate_session(&claims.sub, &format!("access:{}", token))
-        .await?;
-    if !is_valid {
-        return Err(AppError::Unauthorized(
-            "Sessão revogada ou expirada".to_string(),
-        ));
+    if config.profile.manage_sessions {
+        let is_valid = cache
+            .validate_session(&claims.sub, &format!("access:{}", token))
+            .await?;
+        if !is_valid {
+            return Err(AppError::Unauthorized(
+                "Sessão revogada ou expirada".to_string(),
+            ));
+        }
     }
 
     let current_user = CurrentUser {

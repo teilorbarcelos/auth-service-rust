@@ -1,4 +1,5 @@
-use auth_service_rust::config::RedisKeys;
+use auth_service_rust::config::BackendProfile;
+
 use auth_service_rust::{
     config::AppConfig,
     infra::{auth::AuthService, cache::Cache, database},
@@ -15,7 +16,7 @@ async fn build_app() -> (axum::Router, AppConfig) {
     let db = database::connect(&config.database_url)
         .await
         .expect("Failed to connect to DB");
-    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
+    let cache = Cache::new(&config.redis_url, config.profile.clone());
 
     let api_router = modules::app_router(db.clone(), cache.clone(), config.clone());
     let obs_router = modules::observability::router(db.clone(), cache.clone());
@@ -533,7 +534,7 @@ async fn test_revoked_token_rejected() {
     let token = body["token"].as_str().unwrap().to_string();
 
     // Revoke sessions directly in Redis
-    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
+    let cache = Cache::new(&config.redis_url, config.profile.clone());
     cache.invalidate_user_sessions(&user_id).await.unwrap();
 
     // Now try to use the revoked token - should get 401
@@ -556,7 +557,7 @@ async fn test_revoked_token_rejected() {
 async fn test_ready_with_invalid_cache() {
     use auth_service_rust::infra::database;
 
-    let cache = Cache::new("redis://127.0.0.1:16379", RedisKeys::for_naming(&auth_service_rust::config::TableNaming::Pascal));
+    let cache = Cache::new("redis://127.0.0.1:16379", BackendProfile::for_target("rust"));
     let config = AppConfig::load();
     let db = database::connect(&config.database_url).await.unwrap();
     let obs_router = modules::observability::router(db, cache);

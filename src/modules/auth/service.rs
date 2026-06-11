@@ -19,9 +19,9 @@ impl AuthModuleService {
         cache: &Cache,
         config: &AppConfig,
     ) -> Result<AuthResponse, AppError> {
-        let tn = config.table_naming.tables();
+        let p = &config.profile;
 
-        let user_record = db_query::find_user_by_email(db, &tn, &payload.email)
+        let user_record = db_query::find_user_by_email(db, p, &payload.email)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Credenciais inválidas".to_string()))?;
 
@@ -31,7 +31,7 @@ impl AuthModuleService {
             ));
         }
 
-        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
+        let role_record = db_query::find_role_by_id(db, p, &user_record.id_role)
             .await?
             .ok_or_else(|| {
                 AppError::Unauthorized("Perfil do usuário não encontrado".to_string())
@@ -48,7 +48,7 @@ impl AuthModuleService {
             .as_ref()
             .ok_or_else(|| AppError::Unauthorized("Credenciais não configuradas".to_string()))?;
 
-        let auth_record = db_query::find_auth_by_id(db, &tn, auth_id)
+        let auth_record = db_query::find_auth_by_id(db, p, auth_id)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Credenciais não encontradas".to_string()))?;
 
@@ -64,7 +64,7 @@ impl AuthModuleService {
             return Err(AppError::Unauthorized("Credenciais inválidas".to_string()));
         }
 
-        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
+        let permissions_records = db_query::find_permissions_by_role(db, p, &role_record.id)
             .await?;
 
         let mut allowed_actions = Vec::new();
@@ -93,7 +93,7 @@ impl AuthModuleService {
             })
             .collect::<Vec<_>>();
 
-        let perm_key = format!("session:{}:permissions", user_record.id);
+        let perm_key = format!("{}permissions", p.redis_permissions.replace("{}", &user_record.id));
         if !allowed_actions.is_empty() {
             cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
         } else {
@@ -102,15 +102,20 @@ impl AuthModuleService {
                 .await?;
         }
 
+        let session_version = cache.get_session_version(&user_record.id).await?;
+
         let (access_token, refresh_token) = AuthService::generate_tokens(
             &user_record.id,
             &user_record.email,
             &role_record.id,
             &config.jwt_secret,
             config.jwt_expires_in,
+            session_version,
+            &permissions,
+            p,
         )?;
 
-        if config.manage_sessions {
+        if p.manage_sessions {
             cache
                 .create_session(
                     &user_record.id,
@@ -148,17 +153,17 @@ impl AuthModuleService {
         db: &DatabaseConnection,
         config: &AppConfig,
     ) -> Result<UserMeResponse, AppError> {
-        let tn = config.table_naming.tables();
+        let p = &config.profile;
 
-        let user_record = db_query::find_user_by_id(db, &tn, user_id)
+        let user_record = db_query::find_user_by_id(db, p, user_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Usuário não encontrado".to_string()))?;
 
-        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
+        let role_record = db_query::find_role_by_id(db, p, &user_record.id_role)
             .await?
             .ok_or_else(|| AppError::NotFound("Perfil não encontrado".to_string()))?;
 
-        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
+        let permissions_records = db_query::find_permissions_by_role(db, p, &role_record.id)
             .await?;
 
         let permissions = permissions_records
@@ -186,8 +191,12 @@ impl AuthModuleService {
         })
     }
 
-    pub async fn logout(user_id: &str, cache: &Cache, _config: &AppConfig) -> Result<SimpleStatusResponse, AppError> {
-        if _config.manage_sessions {
+    pub async fn logout(
+        user_id: &str,
+        cache: &Cache,
+        config: &AppConfig,
+    ) -> Result<SimpleStatusResponse, AppError> {
+        if config.profile.manage_sessions {
             cache.invalidate_user_sessions(user_id).await?;
         }
         Ok(SimpleStatusResponse { status: true })
@@ -199,19 +208,21 @@ impl AuthModuleService {
         cache: &Cache,
         config: &AppConfig,
     ) -> Result<AuthResponse, AppError> {
-        let tn = config.table_naming.tables();
+        let p = &config.profile;
         let claims = AuthService::verify_token(refresh_token, &config.jwt_secret)?;
 
-        let is_valid = cache
-            .validate_session(&claims.sub, &format!("refresh:{}", refresh_token))
-            .await?;
-        if !is_valid {
-            return Err(AppError::Unauthorized(
-                "Sessão revogada ou expirada".to_string(),
-            ));
+        if p.manage_sessions {
+            let is_valid = cache
+                .validate_session(&claims.sub, &format!("refresh:{}", refresh_token))
+                .await?;
+            if !is_valid {
+                return Err(AppError::Unauthorized(
+                    "Sessão revogada ou expirada".to_string(),
+                ));
+            }
         }
 
-        let user_record = db_query::find_user_by_id(db, &tn, &claims.sub)
+        let user_record = db_query::find_user_by_id(db, p, &claims.sub)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Usuário não encontrado".to_string()))?;
 
@@ -221,7 +232,7 @@ impl AuthModuleService {
             ));
         }
 
-        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
+        let role_record = db_query::find_role_by_id(db, p, &user_record.id_role)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Perfil não encontrado".to_string()))?;
 
@@ -229,7 +240,7 @@ impl AuthModuleService {
             return Err(AppError::Unauthorized("Perfil inativo".to_string()));
         }
 
-        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
+        let permissions_records = db_query::find_permissions_by_role(db, p, &role_record.id)
             .await?;
 
         let mut allowed_actions = Vec::new();
@@ -258,7 +269,7 @@ impl AuthModuleService {
             })
             .collect::<Vec<_>>();
 
-        let perm_key = format!("session:{}:permissions", user_record.id);
+        let perm_key = format!("{}permissions", p.redis_permissions.replace("{}", &user_record.id));
         if !allowed_actions.is_empty() {
             cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
         } else {
@@ -267,11 +278,13 @@ impl AuthModuleService {
                 .await?;
         }
 
-        if config.manage_sessions {
+        if p.manage_sessions {
             cache
                 .delete_session(&user_record.id, &format!("refresh:{}", refresh_token))
                 .await?;
         }
+
+        let session_version = cache.get_session_version(&user_record.id).await?;
 
         let (access_token, new_refresh_token) = AuthService::generate_tokens(
             &user_record.id,
@@ -279,9 +292,12 @@ impl AuthModuleService {
             &role_record.id,
             &config.jwt_secret,
             config.jwt_expires_in,
+            session_version,
+            &permissions,
+            p,
         )?;
 
-        if config.manage_sessions {
+        if p.manage_sessions {
             cache
                 .create_session(
                     &user_record.id,
@@ -318,7 +334,7 @@ impl AuthModuleService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::RedisKeys;
+    use crate::config::BackendProfile;
     use crate::modules::auth::schemas::LoginRequest;
     use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, EntityTrait, Set, Statement};
 
@@ -332,8 +348,11 @@ mod tests {
     async fn test_login_role_not_found() {
         if let Some(db) = get_real_db().await {
             let config = AppConfig::load();
-            let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
-            let tn = config.table_naming.tables();
+            let cache = Cache::new(
+                &config.redis_url,
+                config.profile.clone(),
+            );
+            let p = &config.profile;
 
             let auth_id = format!("a-{}", uuid::Uuid::new_v4());
             let password_hash = bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap();
@@ -347,15 +366,9 @@ mod tests {
             };
             temp_auth.insert(&db).await.unwrap();
 
-            let disable_trigger = format!(
-                r#"ALTER TABLE "{}" DISABLE TRIGGER ALL"#,
-                tn.user
-            );
+            let disable_trigger = format!(r#"ALTER TABLE "{}" DISABLE TRIGGER ALL"#, p.table_user);
             let _ = db
-                .execute(Statement::from_string(
-                    DatabaseBackend::Postgres,
-                    disable_trigger,
-                ))
+                .execute(Statement::from_string(DatabaseBackend::Postgres, disable_trigger))
                 .await;
 
             let user_id = format!("u-{}", uuid::Uuid::new_v4());
@@ -389,15 +402,9 @@ mod tests {
 
             let _ = user::Entity::delete_by_id(&user_id).exec(&db).await;
             let _ = auth::Entity::delete_by_id(&auth_id).exec(&db).await;
-            let enable_trigger = format!(
-                r#"ALTER TABLE "{}" ENABLE TRIGGER ALL"#,
-                tn.user
-            );
+            let enable_trigger = format!(r#"ALTER TABLE "{}" ENABLE TRIGGER ALL"#, p.table_user);
             let _ = db
-                .execute(Statement::from_string(
-                    DatabaseBackend::Postgres,
-                    enable_trigger,
-                ))
+                .execute(Statement::from_string(DatabaseBackend::Postgres, enable_trigger))
                 .await;
         }
     }

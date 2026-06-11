@@ -1,22 +1,22 @@
-use crate::{config::RedisKeys, errors::AppError};
+use crate::{config::BackendProfile, errors::AppError};
 use deadpool_redis::{Config, Connection, Pool, Runtime};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub struct Cache {
     pub pool: Pool,
-    pub keys: RedisKeys,
+    pub profile: BackendProfile,
 }
 
 impl Cache {
-    pub fn new(redis_url: &str, keys: RedisKeys) -> Self {
+    pub fn new(redis_url: &str, profile: BackendProfile) -> Self {
         let cfg = Config::from_url(redis_url.to_string());
 
         let pool = cfg
             .create_pool(Some(Runtime::Tokio1))
             .expect("Falha ao criar o pool do Redis");
 
-        Self { pool, keys }
+        Self { pool, profile }
     }
 
     async fn get_conn(&self) -> Result<Connection, AppError> {
@@ -26,15 +26,6 @@ impl Cache {
             .map_err(|e| AppError::Internal(format!("Erro ao obter conexão do Redis: {}", e)))
     }
 
-    fn epoch_key(&self, user_id: &str) -> String {
-        self.keys.session_version.replace("{}", user_id)
-    }
-
-    fn token_key(&self, user_id: &str, token: &str) -> String {
-        let key = self.keys.session_token.replacen("{}", user_id, 1);
-        key.replacen("{}", token, 1)
-    }
-
     pub async fn create_session(
         &self,
         user_id: &str,
@@ -42,8 +33,26 @@ impl Cache {
         expires_sec: i64,
     ) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = self.epoch_key(user_id);
-        let token_key = self.token_key(user_id, token);
+        let epoch_key = self
+            .profile
+            .redis_session_version
+            .replace("{}", user_id);
+
+        let token_key = self
+            .profile
+            .redis_token_key
+            .replace("{user_id}", user_id)
+            .replace("{role_id}", "")
+            .replace("{token}", token);
+
+        // Garante que a chave de versão existe (SET NX = cria se não existir)
+        redis::cmd("SET")
+            .arg(&epoch_key)
+            .arg("0")
+            .arg("NX")
+            .query_async::<_, ()>(&mut conn)
+            .await
+            .ok();
 
         let current_epoch: i64 = redis::cmd("GET")
             .arg(&epoch_key)
@@ -65,8 +74,16 @@ impl Cache {
 
     pub async fn validate_session(&self, user_id: &str, token: &str) -> Result<bool, AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = self.epoch_key(user_id);
-        let token_key = self.token_key(user_id, token);
+        let epoch_key = self
+            .profile
+            .redis_session_version
+            .replace("{}", user_id);
+        let token_key = self
+            .profile
+            .redis_token_key
+            .replace("{user_id}", user_id)
+            .replace("{role_id}", "")
+            .replace("{token}", token);
 
         let result: Vec<Option<i64>> = redis::cmd("MGET")
             .arg(&token_key)
@@ -81,13 +98,29 @@ impl Cache {
         };
 
         let current_version = result.get(1).unwrap_or(&None).unwrap_or(0);
-
         Ok(token_version == current_version)
+    }
+
+    pub async fn get_session_version(&self, user_id: &str) -> Result<i64, AppError> {
+        let mut conn = self.get_conn().await?;
+        let epoch_key = self
+            .profile
+            .redis_session_version
+            .replace("{}", user_id);
+        let version: i64 = redis::cmd("GET")
+            .arg(&epoch_key)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(0);
+        Ok(version)
     }
 
     pub async fn invalidate_user_sessions(&self, user_id: &str) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = self.epoch_key(user_id);
+        let epoch_key = self
+            .profile
+            .redis_session_version
+            .replace("{}", user_id);
 
         #[cfg(test)]
         let res = if user_id.contains("FORCE_DEL_ERROR") {
@@ -107,15 +140,20 @@ impl Cache {
             .query_async::<_, ()>(&mut conn)
             .await;
 
-        let _: () =
-            res.map_err(|e| AppError::Internal(format!("Erro ao expirar sessões antigas: {}", e)))?;
+        let _: () = res
+            .map_err(|e| AppError::Internal(format!("Erro ao expirar sessões antigas: {}", e)))?;
 
         Ok(())
     }
 
     pub async fn delete_session(&self, user_id: &str, token: &str) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let token_key = self.token_key(user_id, token);
+        let token_key = self
+            .profile
+            .redis_token_key
+            .replace("{user_id}", user_id)
+            .replace("{role_id}", "")
+            .replace("{token}", token);
         let _: () = redis::cmd("DEL")
             .arg(&token_key)
             .query_async(&mut conn)
@@ -236,7 +274,7 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::RedisKeys;
+    use crate::config::BackendProfile;
     use std::env;
 
     fn get_redis_url() -> String {
@@ -246,7 +284,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_exceeded() {
-        let cache = Cache::new(&get_redis_url(), RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
+        let cache = Cache::new(
+            &get_redis_url(),
+            BackendProfile::for_target("rust"),
+        );
         let key = format!("test_rate_limit_exceeded_key_{}", uuid::Uuid::new_v4());
 
         let (allowed1, remaining1, limit1) = cache.check_rate_limit(&key, 1, 10).await.unwrap();
@@ -262,7 +303,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalidate_user_sessions_error() {
-        let dead_cache = Cache::new("redis://127.0.0.1:9999", RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
+        let dead_cache = Cache::new(
+            "redis://127.0.0.1:9999",
+            BackendProfile::for_target("rust"),
+        );
         let user_id = format!("test-err-{}", uuid::Uuid::new_v4());
         let res = dead_cache.invalidate_user_sessions(&user_id).await;
         assert!(res.is_err());
@@ -270,7 +314,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_set_methods() {
-        let cache = Cache::new(&get_redis_url(), RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
+        let cache = Cache::new(
+            &get_redis_url(),
+            BackendProfile::for_target("rust"),
+        );
         let key = format!("test_set_methods_key_{}", uuid::Uuid::new_v4());
 
         let exists = cache.key_exists(&key).await.unwrap();
