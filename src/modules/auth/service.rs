@@ -186,8 +186,8 @@ impl AuthModuleService {
         })
     }
 
-    pub async fn logout(user_id: &str, cache: &Cache, config: &AppConfig) -> Result<SimpleStatusResponse, AppError> {
-        if config.manage_sessions {
+    pub async fn logout(user_id: &str, cache: &Cache, _config: &AppConfig) -> Result<SimpleStatusResponse, AppError> {
+        if _config.manage_sessions {
             cache.invalidate_user_sessions(user_id).await?;
         }
         Ok(SimpleStatusResponse { status: true })
@@ -318,8 +318,9 @@ impl AuthModuleService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RedisKeys;
     use crate::modules::auth::schemas::LoginRequest;
-    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, Set, Statement};
+    use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, EntityTrait, Set, Statement};
 
     async fn get_real_db() -> Option<DatabaseConnection> {
         let config = AppConfig::load();
@@ -331,7 +332,7 @@ mod tests {
     async fn test_login_role_not_found() {
         if let Some(db) = get_real_db().await {
             let config = AppConfig::load();
-            let cache = Cache::new(&config.redis_url);
+            let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
             let tn = config.table_naming.tables();
 
             let auth_id = format!("a-{}", uuid::Uuid::new_v4());

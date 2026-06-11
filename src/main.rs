@@ -1,5 +1,5 @@
 use auth_service_rust::{
-    config::AppConfig,
+    config::{AppConfig, RedisKeys},
     infra::{cache::Cache, database},
     middleware,
     modules,
@@ -70,7 +70,8 @@ async fn main() {
         }
     };
 
-    let cache = Cache::new(&config.redis_url);
+    let redis_keys = RedisKeys::for_naming(&config.table_naming);
+    let cache = Cache::new(&config.redis_url, redis_keys);
     {
         let mut retries = 5;
         loop {

@@ -1,3 +1,4 @@
+use auth_service_rust::config::RedisKeys;
 use auth_service_rust::{
     config::AppConfig,
     errors::AppError,
@@ -92,7 +93,7 @@ async fn test_login_invalid_credentials() {
         password: "wrongpass".to_string(),
     };
 
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
     let result = AuthModuleService::login(payload, &db, &cache, &config).await;
     assert!(result.is_err());
     assert!(result
@@ -111,7 +112,7 @@ async fn test_login_wrong_password() {
         password: "wrong-password".to_string(),
     };
 
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
     let result = AuthModuleService::login(payload, &db, &cache, &config).await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().message(), "Credenciais inválidas");
@@ -176,7 +177,7 @@ async fn test_password_hashing() {
 #[tokio::test]
 async fn test_session_invalidation() {
     let config = AppConfig::load();
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
     let user_id = format!("test-session-{}", uuid::Uuid::new_v4());
 
     cache
@@ -203,7 +204,7 @@ async fn test_session_invalidation() {
 #[tokio::test]
 async fn test_key_exists_and_set_members() {
     let config = AppConfig::load();
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
     let key = format!("test-perm-{}", uuid::Uuid::new_v4());
 
     assert!(!cache.key_exists(&key).await.unwrap());
@@ -260,7 +261,7 @@ async fn test_generate_tokens_wrong_secret() {
 async fn test_login_success() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let (email, password, _user_id) = create_test_user(&db, "success").await;
 
@@ -296,7 +297,7 @@ async fn test_login_success() {
 async fn test_refresh_token_cycle() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let (email, password, _user_id) = create_test_user(&db, "refresh").await;
 
@@ -332,7 +333,7 @@ async fn test_refresh_token_cycle() {
 async fn test_get_me_after_login() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let (email, password, _user_id) = create_test_user(&db, "getme").await;
 
@@ -366,7 +367,7 @@ async fn test_get_me_after_login() {
 async fn test_logout_invalidates_session() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let (email, password, _user_id) = create_test_user(&db, "logout").await;
 
@@ -385,7 +386,7 @@ async fn test_logout_invalidates_session() {
     let user_id = login.user.id.clone();
     let access_token = login.token.clone();
 
-    let result = AuthModuleService::logout(&user_id, &cache)
+    let result = AuthModuleService::logout(&user_id, &cache, &config)
         .await
         .expect("Logout should succeed");
     assert!(result.status);
@@ -498,7 +499,7 @@ async fn test_get_me_nonexistent_user() {
 async fn test_login_forbidden_inactive_user() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let uid: String = uuid::Uuid::new_v4().to_string().chars().take(32).collect();
     let email = format!("inactive-{}@test.com", uid);
@@ -545,7 +546,7 @@ async fn test_login_forbidden_inactive_user() {
 async fn test_login_inactive_role() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     // Create a test role with active=false
     let role_id = format!("tr-{}", uuid::Uuid::new_v4().to_string().chars().take(30).collect::<String>());
@@ -614,7 +615,7 @@ async fn test_login_inactive_role() {
 async fn test_login_missing_auth_record() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     let uid: String = uuid::Uuid::new_v4().to_string().chars().take(32).collect();
     let email = format!("no-auth-{}@test.com", uid);
@@ -664,7 +665,7 @@ async fn test_login_missing_auth_record() {
 #[tokio::test]
 async fn test_cache_operations_error() {
     let config = AppConfig::load();
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
     let key = format!("test-del-{}", uuid::Uuid::new_v4());
 
     // Delete non-existent key should not error
@@ -684,7 +685,7 @@ async fn test_cache_operations_error() {
 async fn test_refresh_nonexistent_token() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     // Generate a valid JWT that doesn't have a Redis session
     let (_, refresh) = AuthService::generate_tokens(
@@ -704,7 +705,7 @@ async fn test_refresh_nonexistent_token() {
 #[tokio::test]
 async fn test_cache_rate_limit_error_handling() {
     let config = AppConfig::load();
-    let cache = Cache::new(&config.redis_url);
+    let cache = Cache::new(&config.redis_url, RedisKeys::for_naming(&config.table_naming));
 
     // Use a unique key
     let key = format!("rl-err-{}", uuid::Uuid::new_v4());

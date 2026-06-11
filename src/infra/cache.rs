@@ -236,6 +236,7 @@ impl Cache {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RedisKeys;
     use std::env;
 
     fn get_redis_url() -> String {
@@ -245,7 +246,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limit_exceeded() {
-        let cache = Cache::new(&get_redis_url());
+        let cache = Cache::new(&get_redis_url(), RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
         let key = format!("test_rate_limit_exceeded_key_{}", uuid::Uuid::new_v4());
 
         let (allowed1, remaining1, limit1) = cache.check_rate_limit(&key, 1, 10).await.unwrap();
@@ -261,7 +262,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalidate_user_sessions_error() {
-        let dead_cache = Cache::new("redis://127.0.0.1:9999");
+        let dead_cache = Cache::new("redis://127.0.0.1:9999", RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
         let user_id = format!("test-err-{}", uuid::Uuid::new_v4());
         let res = dead_cache.invalidate_user_sessions(&user_id).await;
         assert!(res.is_err());
@@ -269,7 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_set_methods() {
-        let cache = Cache::new(&get_redis_url());
+        let cache = Cache::new(&get_redis_url(), RedisKeys::for_naming(&crate::config::TableNaming::Pascal));
         let key = format!("test_set_methods_key_{}", uuid::Uuid::new_v4());
 
         let exists = cache.key_exists(&key).await.unwrap();
