@@ -70,7 +70,7 @@ async fn main() {
         }
     };
 
-    let cache = Cache::new(&config.redis_url, config.profile.clone());
+    let cache = Cache::new(&config.redis_url);
     {
         let mut retries = 5;
         loop {

@@ -1,5 +1,3 @@
-use auth_service_rust::config::BackendProfile;
-
 use auth_service_rust::{
     config::AppConfig,
     infra::{auth::AuthService, cache::Cache, database},
@@ -8,7 +6,7 @@ use auth_service_rust::{
 };
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use tower::ServiceExt;
 
 async fn build_app() -> (axum::Router, AppConfig) {
@@ -16,7 +14,7 @@ async fn build_app() -> (axum::Router, AppConfig) {
     let db = database::connect(&config.database_url)
         .await
         .expect("Failed to connect to DB");
-    let cache = Cache::new(&config.redis_url, config.profile.clone());
+    let cache = Cache::new(&config.redis_url);
 
     let api_router = modules::app_router(db.clone(), cache.clone(), config.clone());
     let obs_router = modules::observability::router(db.clone(), cache.clone());
@@ -29,23 +27,41 @@ async fn build_app() -> (axum::Router, AppConfig) {
 }
 
 /// Cria um usuário único por teste para evitar race conditions
-async fn create_http_test_user(db: &DatabaseConnection, config: &AppConfig) -> (String, String, String) {
-    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
-    let p = &config.profile;
+async fn create_http_test_user(db: &DatabaseConnection) -> (String, String, String) {
     let uid: String = uuid::Uuid::new_v4().to_string().chars().take(32).collect();
     let email = format!("http-{}@test.com", uid);
     let password = "test-pass-123";
+
     let password_hash = AuthService::hash_password(password).unwrap();
     let auth_id = format!("ha{}", &uid[..30]);
+    let auth = models::auth::ActiveModel {
+        id: Set(auth_id.clone()),
+        password: Set(Some(password_hash)),
+        active: Set(true),
+        is_deleted: Set(Some(false)),
+        deleted_at: Set(None),
+        created_at: Set(chrono::Utc::now().into()),
+        updated_at: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
+    auth.insert(db).await.expect("create auth");
+
     let user_id = format!("hu{}", &uid[..30]);
-    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
-        format!(r#"INSERT INTO "{}" (id, password, active, is_deleted, created_at, updated_at) VALUES ($1, $2, true, false, NOW(), NOW())"#, p.table_auth),
-        vec![auth_id.clone().into(), password_hash.into()],
-    )).await.expect("create auth");
-    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
-        format!(r#"INSERT INTO "{}" (id, name, email, id_role, id_auth, active, is_deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, true, false, NOW(), NOW())"#, p.table_user),
-        vec![user_id.clone().into(), "HTTP Test User".into(), email.clone().into(), "administrator".into(), auth_id.into()],
-    )).await.expect("create user");
+    let user = models::user::ActiveModel {
+        id: Set(user_id.clone()),
+        name: Set("HTTP Test User".to_string()),
+        email: Set(email.clone()),
+        id_role: Set("administrator".to_string()),
+        id_auth: Set(Some(auth_id)),
+        active: Set(true),
+        is_deleted: Set(Some(false)),
+        deleted_at: Set(None),
+        created_at: Set(chrono::Utc::now().into()),
+        updated_at: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
+    user.insert(db).await.expect("create user");
+
     (email, password.to_string(), user_id)
 }
 
@@ -180,7 +196,7 @@ async fn test_me_endpoint_requires_auth() {
 async fn test_me_endpoint_with_token() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
+    let (_email, password, _user_id) = create_http_test_user(&db).await;
 
     // Login with test user
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
@@ -362,7 +378,7 @@ async fn test_login_without_body() {
 async fn test_login_then_logout() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
+    let (_email, password, _user_id) = create_http_test_user(&db).await;
 
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
     let login = app
@@ -410,7 +426,7 @@ async fn test_login_then_logout() {
 async fn test_login_then_refresh() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, _user_id) = create_http_test_user(&db, &config).await;
+    let (_email, password, _user_id) = create_http_test_user(&db).await;
 
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
     let login = app
@@ -493,7 +509,7 @@ async fn test_me_with_fake_bearer_token() {
 async fn test_revoked_token_rejected() {
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
-    let (_email, password, user_id) = create_http_test_user(&db, &config).await;
+    let (_email, password, user_id) = create_http_test_user(&db).await;
 
     // Login
     let body_str = serde_json::json!({"email": _email, "password": password}).to_string();
@@ -516,7 +532,7 @@ async fn test_revoked_token_rejected() {
     let token = body["token"].as_str().unwrap().to_string();
 
     // Revoke sessions directly in Redis
-    let cache = Cache::new(&config.redis_url, config.profile.clone());
+    let cache = Cache::new(&config.redis_url);
     cache.invalidate_user_sessions(&user_id).await.unwrap();
 
     // Now try to use the revoked token - should get 401
@@ -539,7 +555,7 @@ async fn test_revoked_token_rejected() {
 async fn test_ready_with_invalid_cache() {
     use auth_service_rust::infra::database;
 
-    let cache = Cache::new("redis://127.0.0.1:16379", BackendProfile::for_target("rust"));
+    let cache = Cache::new("redis://127.0.0.1:16379");
     let config = AppConfig::load();
     let db = database::connect(&config.database_url).await.unwrap();
     let obs_router = modules::observability::router(db, cache);

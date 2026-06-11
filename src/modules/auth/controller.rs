@@ -25,8 +25,8 @@ pub async fn get_me_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<UserMeResponse>, AppError> {
-    let (db, _, config) = state;
-    let me_data = AuthModuleService::get_me(&current_user.id, &db, &config).await?;
+    let (db, _, _) = state;
+    let me_data = AuthModuleService::get_me(&current_user.id, &db).await?;
     Ok(Json(me_data))
 }
 
@@ -34,8 +34,8 @@ pub async fn logout_handler(
     State(state): State<(DatabaseConnection, Cache, AppConfig)>,
     Extension(current_user): Extension<CurrentUser>,
 ) -> Result<Json<SimpleStatusResponse>, AppError> {
-    let (_, cache, config) = state;
-    let response = AuthModuleService::logout(&current_user.id, &cache, &config).await?;
+    let (_, cache, _) = state;
+    let response = AuthModuleService::logout(&current_user.id, &cache).await?;
     Ok(Json(response))
 }
 
