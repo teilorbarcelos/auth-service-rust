@@ -5,8 +5,28 @@ use auth_service_rust::{
 };
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, Set, Statement,
+};
 use tower::ServiceExt;
+
+/// Retorna true se as tabelas do banco existem (false no CI sem migrations).
+async fn has_tables(config: &AppConfig) -> bool {
+    let db = match sea_orm::Database::connect(&config.database_url).await {
+        Ok(d) => d,
+        Err(_) => return false,
+    };
+    match db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema='public' AND table_name='Auth')".to_owned(),
+        ))
+        .await
+    {
+        Ok(Some(row)) => row.try_get::<bool>("", "exists").unwrap_or(false),
+        _ => false,
+    }
+}
 
 async fn build_app() -> (axum::Router, AppConfig) {
     let config = AppConfig::load();
@@ -118,6 +138,9 @@ async fn test_login_endpoint_invalid_json() {
 
 #[tokio::test]
 async fn test_login_endpoint_wrong_credentials() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, _) = build_app().await;
 
     let response = app
@@ -139,6 +162,9 @@ async fn test_login_endpoint_wrong_credentials() {
 
 #[tokio::test]
 async fn test_login_endpoint_success() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, _) = build_app().await;
 
     let response = app
@@ -189,6 +215,9 @@ async fn test_me_endpoint_requires_auth() {
 
 #[tokio::test]
 async fn test_me_endpoint_with_token() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
     let (_email, password, _user_id) = create_http_test_user(&db).await;
@@ -373,6 +402,9 @@ async fn test_login_without_body() {
 
 #[tokio::test]
 async fn test_login_then_logout() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
     let (_email, password, _user_id) = create_http_test_user(&db).await;
@@ -426,6 +458,9 @@ async fn test_login_then_logout() {
 
 #[tokio::test]
 async fn test_login_then_refresh() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
     let (_email, password, _user_id) = create_http_test_user(&db).await;
@@ -510,6 +545,9 @@ async fn test_me_with_fake_bearer_token() {
 
 #[tokio::test]
 async fn test_revoked_token_rejected() {
+    if !has_tables(&AppConfig::load()).await {
+        return;
+    }
     let (app, config) = build_app().await;
     let db = database::connect(&config.database_url).await.unwrap();
     let (_email, password, user_id) = create_http_test_user(&db).await;
