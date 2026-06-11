@@ -73,16 +73,40 @@ impl AuthModuleService {
             .all(db)
             .await?;
 
+        let mut allowed_actions = Vec::new();
         let permissions = permissions_records
             .into_iter()
-            .map(|p| PermissionInfo {
-                feature: p.id_feature,
-                create: p.create,
-                view: p.view,
-                activate: p.activate,
-                delete: p.delete,
+            .map(|p| {
+                if p.create {
+                    allowed_actions.push(format!("{}:create", p.id_feature));
+                }
+                if p.view {
+                    allowed_actions.push(format!("{}:view", p.id_feature));
+                }
+                if p.activate {
+                    allowed_actions.push(format!("{}:activate", p.id_feature));
+                }
+                if p.delete {
+                    allowed_actions.push(format!("{}:delete", p.id_feature));
+                }
+                PermissionInfo {
+                    feature: p.id_feature,
+                    create: p.create,
+                    view: p.view,
+                    activate: p.activate,
+                    delete: p.delete,
+                }
             })
             .collect::<Vec<_>>();
+
+        let perm_key = format!("session:{}:permissions", user_record.id);
+        if !allowed_actions.is_empty() {
+            cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
+        } else {
+            cache
+                .add_to_set(&perm_key, &[String::from("none:none")], 3600)
+                .await?;
+        }
 
         let (access_token, refresh_token) = AuthService::generate_tokens(
             &user_record.id,
@@ -214,16 +238,40 @@ impl AuthModuleService {
             .all(db)
             .await?;
 
+        let mut allowed_actions = Vec::new();
         let permissions = permissions_records
             .into_iter()
-            .map(|p| PermissionInfo {
-                feature: p.id_feature,
-                create: p.create,
-                view: p.view,
-                activate: p.activate,
-                delete: p.delete,
+            .map(|p| {
+                if p.create {
+                    allowed_actions.push(format!("{}:create", p.id_feature));
+                }
+                if p.view {
+                    allowed_actions.push(format!("{}:view", p.id_feature));
+                }
+                if p.activate {
+                    allowed_actions.push(format!("{}:activate", p.id_feature));
+                }
+                if p.delete {
+                    allowed_actions.push(format!("{}:delete", p.id_feature));
+                }
+                PermissionInfo {
+                    feature: p.id_feature,
+                    create: p.create,
+                    view: p.view,
+                    activate: p.activate,
+                    delete: p.delete,
+                }
             })
             .collect::<Vec<_>>();
+
+        let perm_key = format!("session:{}:permissions", user_record.id);
+        if !allowed_actions.is_empty() {
+            cache.add_to_set(&perm_key, &allowed_actions, 3600).await?;
+        } else {
+            cache
+                .add_to_set(&perm_key, &[String::from("none:none")], 3600)
+                .await?;
+        }
 
         cache
             .delete_session(&user_record.id, &format!("refresh:{}", refresh_token))
