@@ -2,10 +2,7 @@ use auth_service_rust::{
     config::AppConfig,
     infra::{auth::AuthService, cache::Cache},
     middleware::auth::CurrentUser,
-    modules::auth::{
-        schemas::LoginRequest,
-        service::AuthModuleService,
-    },
+    modules::auth::{schemas::LoginRequest, service::AuthModuleService},
 };
 use sea_orm::DatabaseConnection;
 
@@ -28,10 +25,7 @@ async fn test_login_invalid_credentials() {
 
     let result = AuthModuleService::login(payload, &db, &cache, &config).await;
     assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err().message(),
-        "Credenciais inválidas"
-    );
+    assert_eq!(result.unwrap_err().message(), "Credenciais inválidas");
 }
 
 #[tokio::test]
@@ -47,8 +41,8 @@ async fn test_token_generation_and_verification() {
     )
     .expect("Should generate tokens");
 
-    let claims = AuthService::verify_token(&access, &config.jwt_secret)
-        .expect("Should verify token");
+    let claims =
+        AuthService::verify_token(&access, &config.jwt_secret).expect("Should verify token");
 
     assert_eq!(claims.sub, "test-user-id");
     assert_eq!(claims.email, "test@example.com");
@@ -64,14 +58,9 @@ async fn test_token_generation_and_verification() {
 async fn test_token_expired() {
     let config = AppConfig::load();
 
-    let (token, _) = AuthService::generate_tokens(
-        "user-id",
-        "user@test.com",
-        "role",
-        &config.jwt_secret,
-        0,
-    )
-    .expect("Should generate token");
+    let (token, _) =
+        AuthService::generate_tokens("user-id", "user@test.com", "role", &config.jwt_secret, 0)
+            .expect("Should generate token");
 
     // Sleep briefly to ensure token is expired
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -130,7 +119,11 @@ async fn test_key_exists_and_set_members() {
     assert!(!exists);
 
     cache
-        .add_to_set(&key, &[String::from("user:view"), String::from("product:create")], 60)
+        .add_to_set(
+            &key,
+            &[String::from("user:view"), String::from("product:create")],
+            60,
+        )
         .await
         .unwrap();
 
