@@ -348,7 +348,7 @@ async fn test_get_me_after_login() {
     .await
     .expect("Login should succeed");
 
-    let me = AuthModuleService::get_me(&login.user.id, &db)
+    let me = AuthModuleService::get_me(&login.user.id, &db, &config)
         .await
         .expect("GetMe should succeed");
 
@@ -489,7 +489,7 @@ async fn test_get_me_nonexistent_user() {
     let config = AppConfig::load();
     let db = connect_db(&config).await;
 
-    let result = AuthModuleService::get_me("non-existent-user-id", &db).await;
+    let result = AuthModuleService::get_me("non-existent-user-id", &db, &config).await;
     assert!(result.is_err());
     assert_eq!(result.unwrap_err().message(), "Usuário não encontrado");
 }

@@ -1,15 +1,14 @@
 use crate::{
     config::AppConfig,
     errors::AppError,
-    infra::auth::AuthService,
-    infra::cache::Cache,
+    infra::{auth::AuthService, cache::Cache, db_query},
     models::{auth, role, role_feature, user},
     modules::auth::schemas::{
         AuthResponse, LoginRequest, PermissionInfo, RoleInfo, SimpleStatusResponse, UserInfo,
         UserMeResponse,
     },
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 
 pub struct AuthModuleService;
 
@@ -20,10 +19,9 @@ impl AuthModuleService {
         cache: &Cache,
         config: &AppConfig,
     ) -> Result<AuthResponse, AppError> {
-        let user_record = user::Entity::find()
-            .filter(user::Column::Email.eq(&payload.email))
-            .filter(user::Column::IsDeleted.ne(true))
-            .one(db)
+        let tn = config.table_naming.tables();
+
+        let user_record = db_query::find_user_by_email(db, &tn, &payload.email)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Credenciais inválidas".to_string()))?;
 
@@ -33,8 +31,7 @@ impl AuthModuleService {
             ));
         }
 
-        let role_record = role::Entity::find_by_id(&user_record.id_role)
-            .one(db)
+        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
             .await?
             .ok_or_else(|| {
                 AppError::Unauthorized("Perfil do usuário não encontrado".to_string())
@@ -51,8 +48,7 @@ impl AuthModuleService {
             .as_ref()
             .ok_or_else(|| AppError::Unauthorized("Credenciais não configuradas".to_string()))?;
 
-        let auth_record = auth::Entity::find_by_id(auth_id)
-            .one(db)
+        let auth_record = db_query::find_auth_by_id(db, &tn, auth_id)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Credenciais não encontradas".to_string()))?;
 
@@ -68,9 +64,7 @@ impl AuthModuleService {
             return Err(AppError::Unauthorized("Credenciais inválidas".to_string()));
         }
 
-        let permissions_records = role_feature::Entity::find()
-            .filter(role_feature::Column::IdRole.eq(&role_record.id))
-            .all(db)
+        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
             .await?;
 
         let mut allowed_actions = Vec::new();
@@ -116,20 +110,22 @@ impl AuthModuleService {
             config.jwt_expires_in,
         )?;
 
-        cache
-            .create_session(
-                &user_record.id,
-                &format!("access:{}", access_token),
-                config.jwt_expires_in,
-            )
-            .await?;
-        cache
-            .create_session(
-                &user_record.id,
-                &format!("refresh:{}", refresh_token),
-                7 * 24 * 60 * 60,
-            )
-            .await?;
+        if config.manage_sessions {
+            cache
+                .create_session(
+                    &user_record.id,
+                    &format!("access:{}", access_token),
+                    config.jwt_expires_in,
+                )
+                .await?;
+            cache
+                .create_session(
+                    &user_record.id,
+                    &format!("refresh:{}", refresh_token),
+                    config.jwt_refresh_expires_in,
+                )
+                .await?;
+        }
 
         Ok(AuthResponse {
             token: access_token,
@@ -150,20 +146,19 @@ impl AuthModuleService {
     pub async fn get_me(
         user_id: &str,
         db: &DatabaseConnection,
+        config: &AppConfig,
     ) -> Result<UserMeResponse, AppError> {
-        let user_record = user::Entity::find_by_id(user_id.to_string())
-            .one(db)
+        let tn = config.table_naming.tables();
+
+        let user_record = db_query::find_user_by_id(db, &tn, user_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Usuário não encontrado".to_string()))?;
 
-        let role_record = role::Entity::find_by_id(&user_record.id_role)
-            .one(db)
+        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
             .await?
             .ok_or_else(|| AppError::NotFound("Perfil não encontrado".to_string()))?;
 
-        let permissions_records = role_feature::Entity::find()
-            .filter(role_feature::Column::IdRole.eq(&role_record.id))
-            .all(db)
+        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
             .await?;
 
         let permissions = permissions_records
@@ -191,8 +186,10 @@ impl AuthModuleService {
         })
     }
 
-    pub async fn logout(user_id: &str, cache: &Cache) -> Result<SimpleStatusResponse, AppError> {
-        cache.invalidate_user_sessions(user_id).await?;
+    pub async fn logout(user_id: &str, cache: &Cache, config: &AppConfig) -> Result<SimpleStatusResponse, AppError> {
+        if config.manage_sessions {
+            cache.invalidate_user_sessions(user_id).await?;
+        }
         Ok(SimpleStatusResponse { status: true })
     }
 
@@ -202,6 +199,7 @@ impl AuthModuleService {
         cache: &Cache,
         config: &AppConfig,
     ) -> Result<AuthResponse, AppError> {
+        let tn = config.table_naming.tables();
         let claims = AuthService::verify_token(refresh_token, &config.jwt_secret)?;
 
         let is_valid = cache
@@ -213,8 +211,7 @@ impl AuthModuleService {
             ));
         }
 
-        let user_record = user::Entity::find_by_id(claims.sub.clone())
-            .one(db)
+        let user_record = db_query::find_user_by_id(db, &tn, &claims.sub)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Usuário não encontrado".to_string()))?;
 
@@ -224,8 +221,7 @@ impl AuthModuleService {
             ));
         }
 
-        let role_record = role::Entity::find_by_id(&user_record.id_role)
-            .one(db)
+        let role_record = db_query::find_role_by_id(db, &tn, &user_record.id_role)
             .await?
             .ok_or_else(|| AppError::Unauthorized("Perfil não encontrado".to_string()))?;
 
@@ -233,9 +229,7 @@ impl AuthModuleService {
             return Err(AppError::Unauthorized("Perfil inativo".to_string()));
         }
 
-        let permissions_records = role_feature::Entity::find()
-            .filter(role_feature::Column::IdRole.eq(&role_record.id))
-            .all(db)
+        let permissions_records = db_query::find_permissions_by_role(db, &tn, &role_record.id)
             .await?;
 
         let mut allowed_actions = Vec::new();
@@ -273,9 +267,11 @@ impl AuthModuleService {
                 .await?;
         }
 
-        cache
-            .delete_session(&user_record.id, &format!("refresh:{}", refresh_token))
-            .await?;
+        if config.manage_sessions {
+            cache
+                .delete_session(&user_record.id, &format!("refresh:{}", refresh_token))
+                .await?;
+        }
 
         let (access_token, new_refresh_token) = AuthService::generate_tokens(
             &user_record.id,
@@ -285,20 +281,22 @@ impl AuthModuleService {
             config.jwt_expires_in,
         )?;
 
-        cache
-            .create_session(
-                &user_record.id,
-                &format!("access:{}", access_token),
-                config.jwt_expires_in,
-            )
-            .await?;
-        cache
-            .create_session(
-                &user_record.id,
-                &format!("refresh:{}", new_refresh_token),
-                7 * 24 * 60 * 60,
-            )
-            .await?;
+        if config.manage_sessions {
+            cache
+                .create_session(
+                    &user_record.id,
+                    &format!("access:{}", access_token),
+                    config.jwt_expires_in,
+                )
+                .await?;
+            cache
+                .create_session(
+                    &user_record.id,
+                    &format!("refresh:{}", new_refresh_token),
+                    config.jwt_refresh_expires_in,
+                )
+                .await?;
+        }
 
         Ok(AuthResponse {
             token: access_token,
@@ -325,10 +323,7 @@ mod tests {
 
     async fn get_real_db() -> Option<DatabaseConnection> {
         let config = AppConfig::load();
-        let db = sea_orm::Database::connect(&config.database_url)
-            .await
-            .ok()?;
-
+        let db = sea_orm::Database::connect(&config.database_url).await.ok()?;
         Some(db)
     }
 
@@ -337,10 +332,11 @@ mod tests {
         if let Some(db) = get_real_db().await {
             let config = AppConfig::load();
             let cache = Cache::new(&config.redis_url);
+            let tn = config.table_naming.tables();
 
             let auth_id = format!("a-{}", uuid::Uuid::new_v4());
             let password_hash = bcrypt::hash("password123", bcrypt::DEFAULT_COST).unwrap();
-            let temp_auth = crate::models::auth::ActiveModel {
+            let temp_auth = auth::ActiveModel {
                 id: Set(auth_id.clone()),
                 password: Set(Some(password_hash)),
                 active: Set(true),
@@ -350,16 +346,20 @@ mod tests {
             };
             temp_auth.insert(&db).await.unwrap();
 
+            let disable_trigger = format!(
+                r#"ALTER TABLE "{}" DISABLE TRIGGER ALL"#,
+                tn.user
+            );
             let _ = db
                 .execute(Statement::from_string(
                     DatabaseBackend::Postgres,
-                    "ALTER TABLE \"User\" DISABLE TRIGGER ALL".to_string(),
+                    disable_trigger,
                 ))
                 .await;
 
             let user_id = format!("u-{}", uuid::Uuid::new_v4());
             let email = format!("{}@test.com", user_id);
-            let temp_user = crate::models::user::ActiveModel {
+            let temp_user = user::ActiveModel {
                 id: Set(user_id.clone()),
                 name: Set("Temp User".to_string()),
                 email: Set(email.clone()),
@@ -386,16 +386,16 @@ mod tests {
                 "Perfil do usuário não encontrado"
             );
 
-            let _ = crate::models::user::Entity::delete_by_id(&user_id)
-                .exec(&db)
-                .await;
-            let _ = crate::models::auth::Entity::delete_by_id(&auth_id)
-                .exec(&db)
-                .await;
+            let _ = user::Entity::delete_by_id(&user_id).exec(&db).await;
+            let _ = auth::Entity::delete_by_id(&auth_id).exec(&db).await;
+            let enable_trigger = format!(
+                r#"ALTER TABLE "{}" ENABLE TRIGGER ALL"#,
+                tn.user
+            );
             let _ = db
                 .execute(Statement::from_string(
                     DatabaseBackend::Postgres,
-                    "ALTER TABLE \"User\" ENABLE TRIGGER ALL".to_string(),
+                    enable_trigger,
                 ))
                 .await;
         }

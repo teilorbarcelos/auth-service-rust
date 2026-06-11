@@ -9,7 +9,7 @@ pub struct Model {
     pub password: Option<String>,
     pub request_password_token: Option<String>,
     pub request_password_expiration: Option<DateTimeWithTimeZone>,
-    pub retries: i32,
+    pub retries: i64,
     pub first_access: bool,
     pub active: bool,
     pub is_deleted: Option<bool>,

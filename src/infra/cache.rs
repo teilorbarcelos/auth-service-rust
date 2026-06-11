@@ -1,21 +1,22 @@
-use crate::errors::AppError;
+use crate::{config::RedisKeys, errors::AppError};
 use deadpool_redis::{Config, Connection, Pool, Runtime};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone)]
 pub struct Cache {
     pub pool: Pool,
+    pub keys: RedisKeys,
 }
 
 impl Cache {
-    pub fn new(redis_url: &str) -> Self {
+    pub fn new(redis_url: &str, keys: RedisKeys) -> Self {
         let cfg = Config::from_url(redis_url.to_string());
 
         let pool = cfg
             .create_pool(Some(Runtime::Tokio1))
             .expect("Falha ao criar o pool do Redis");
 
-        Self { pool }
+        Self { pool, keys }
     }
 
     async fn get_conn(&self) -> Result<Connection, AppError> {
@@ -25,6 +26,15 @@ impl Cache {
             .map_err(|e| AppError::Internal(format!("Erro ao obter conexão do Redis: {}", e)))
     }
 
+    fn epoch_key(&self, user_id: &str) -> String {
+        self.keys.session_version.replace("{}", user_id)
+    }
+
+    fn token_key(&self, user_id: &str, token: &str) -> String {
+        let key = self.keys.session_token.replacen("{}", user_id, 1);
+        key.replacen("{}", token, 1)
+    }
+
     pub async fn create_session(
         &self,
         user_id: &str,
@@ -32,8 +42,8 @@ impl Cache {
         expires_sec: i64,
     ) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = format!("session:user:{}:version", user_id);
-        let token_key = format!("session:user:{}:token:{}", user_id, token);
+        let epoch_key = self.epoch_key(user_id);
+        let token_key = self.token_key(user_id, token);
 
         let current_epoch: i64 = redis::cmd("GET")
             .arg(&epoch_key)
@@ -55,8 +65,8 @@ impl Cache {
 
     pub async fn validate_session(&self, user_id: &str, token: &str) -> Result<bool, AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = format!("session:user:{}:version", user_id);
-        let token_key = format!("session:user:{}:token:{}", user_id, token);
+        let epoch_key = self.epoch_key(user_id);
+        let token_key = self.token_key(user_id, token);
 
         let result: Vec<Option<i64>> = redis::cmd("MGET")
             .arg(&token_key)
@@ -77,7 +87,7 @@ impl Cache {
 
     pub async fn invalidate_user_sessions(&self, user_id: &str) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let epoch_key = format!("session:user:{}:version", user_id);
+        let epoch_key = self.epoch_key(user_id);
 
         #[cfg(test)]
         let res = if user_id.contains("FORCE_DEL_ERROR") {
@@ -105,7 +115,7 @@ impl Cache {
 
     pub async fn delete_session(&self, user_id: &str, token: &str) -> Result<(), AppError> {
         let mut conn = self.get_conn().await?;
-        let token_key = format!("session:user:{}:token:{}", user_id, token);
+        let token_key = self.token_key(user_id, token);
         let _: () = redis::cmd("DEL")
             .arg(&token_key)
             .query_async(&mut conn)
