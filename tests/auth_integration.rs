@@ -6,7 +6,10 @@ use auth_service_rust::{
     modules::auth::{schemas::LoginRequest, service::AuthModuleService},
 };
 use axum::response::IntoResponse;
-use sea_orm::{ActiveModelTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, Set, Statement};
+use sea_orm::{
+    ActiveModelTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, Set,
+    Statement,
+};
 
 async fn connect_db(config: &AppConfig) -> DatabaseConnection {
     sea_orm::Database::connect(&config.database_url)
@@ -97,7 +100,9 @@ async fn delete_test_user(db: &DatabaseConnection, user_id: &str) {
 #[tokio::test]
 async fn test_login_invalid_credentials() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
 
     let payload = LoginRequest {
@@ -117,7 +122,9 @@ async fn test_login_invalid_credentials() {
 #[tokio::test]
 async fn test_login_wrong_password() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
 
     let payload = LoginRequest {
@@ -134,7 +141,9 @@ async fn test_login_wrong_password() {
 #[tokio::test]
 async fn test_token_generation_and_verification() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
 
     let (access, refresh) = AuthService::generate_tokens(
         "test-user-id",
@@ -159,7 +168,9 @@ async fn test_token_generation_and_verification() {
 #[tokio::test]
 async fn test_token_claims_structure() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
 
     let (access, _) = AuthService::generate_tokens(
         "test-sub",
@@ -191,7 +202,9 @@ async fn test_password_hashing() {
 #[tokio::test]
 async fn test_session_invalidation() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let cache = Cache::new(&config.redis_url);
     let user_id = format!("test-session-{}", uuid::Uuid::new_v4());
 
@@ -219,7 +232,9 @@ async fn test_session_invalidation() {
 #[tokio::test]
 async fn test_key_exists_and_set_members() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let cache = Cache::new(&config.redis_url);
     let key = format!("test-perm-{}", uuid::Uuid::new_v4());
 
@@ -256,7 +271,9 @@ async fn test_current_user_creation() {
 #[tokio::test]
 async fn test_generate_tokens_wrong_secret() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
 
     let (token, _) =
         AuthService::generate_tokens("user", "user@test.com", "role", &config.jwt_secret, 3600)
@@ -272,7 +289,9 @@ async fn test_generate_tokens_wrong_secret() {
 #[tokio::test]
 async fn test_login_success() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -309,7 +328,9 @@ async fn test_login_success() {
 #[tokio::test]
 async fn test_refresh_token_cycle() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -343,7 +364,9 @@ async fn test_refresh_token_cycle() {
 #[tokio::test]
 async fn test_get_me_after_login() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -375,7 +398,9 @@ async fn test_get_me_after_login() {
 #[tokio::test]
 async fn test_logout_invalidates_session() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -498,7 +523,9 @@ async fn test_from_conversions() {
 #[tokio::test]
 async fn test_get_me_nonexistent_user() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
 
     let result = AuthModuleService::get_me("non-existent-user-id", &db).await;
@@ -509,7 +536,9 @@ async fn test_get_me_nonexistent_user() {
 #[tokio::test]
 async fn test_login_forbidden_inactive_user() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -557,7 +586,9 @@ async fn test_login_forbidden_inactive_user() {
 #[tokio::test]
 async fn test_login_inactive_role() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -634,7 +665,9 @@ async fn test_login_inactive_role() {
 #[tokio::test]
 async fn test_login_missing_auth_record() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -689,7 +722,9 @@ async fn test_login_missing_auth_record() {
 #[tokio::test]
 async fn test_cache_operations_error() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let cache = Cache::new(&config.redis_url);
     let key = format!("test-del-{}", uuid::Uuid::new_v4());
 
@@ -709,7 +744,9 @@ async fn test_cache_operations_error() {
 #[tokio::test]
 async fn test_refresh_nonexistent_token() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let db = connect_db(&config).await;
     let cache = Cache::new(&config.redis_url);
 
@@ -731,7 +768,9 @@ async fn test_refresh_nonexistent_token() {
 #[tokio::test]
 async fn test_cache_rate_limit_error_handling() {
     let config = AppConfig::load();
-    if !has_tables(&config).await { return; }
+    if !has_tables(&config).await {
+        return;
+    }
     let cache = Cache::new(&config.redis_url);
 
     // Use a unique key
