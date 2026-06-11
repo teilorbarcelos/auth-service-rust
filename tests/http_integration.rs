@@ -1,8 +1,7 @@
 use auth_service_rust::{
     config::AppConfig,
     infra::{auth::AuthService, cache::Cache, database},
-    models,
-    modules,
+    models, modules,
 };
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
@@ -19,9 +18,7 @@ async fn build_app() -> (axum::Router, AppConfig) {
     let api_router = modules::app_router(db.clone(), cache.clone(), config.clone());
     let obs_router = modules::observability::router(db.clone(), cache.clone());
 
-    let app = axum::Router::new()
-        .merge(api_router)
-        .merge(obs_router);
+    let app = axum::Router::new().merge(api_router).merge(obs_router);
 
     (app, config)
 }
@@ -160,18 +157,16 @@ async fn test_login_endpoint_success() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
 
     assert!(body.get("token").and_then(|t| t.as_str()).is_some());
     assert!(body.get("refreshToken").and_then(|t| t.as_str()).is_some());
-    assert_eq!(
-        body["user"]["email"].as_str(),
-        Some("admin@email.com")
-    );
+    assert_eq!(body["user"]["email"].as_str(), Some("admin@email.com"));
 }
 
 #[tokio::test]
@@ -213,11 +208,12 @@ async fn test_me_endpoint_with_token() {
         .unwrap();
     assert_eq!(login.status(), StatusCode::OK);
 
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(login.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(login.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
     let token = body["token"].as_str().unwrap().to_string();
 
     // Now call /me with the token - build a new app instance
@@ -253,11 +249,12 @@ async fn test_jwks_endpoint() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(response.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
 
     assert!(body.get("keys").is_some());
     assert_eq!(body["keys"].as_array().unwrap().len(), 0);
@@ -393,11 +390,12 @@ async fn test_login_then_logout() {
         .await
         .unwrap();
     assert_eq!(login.status(), StatusCode::OK);
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(login.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(login.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
     let token = body["token"].as_str().unwrap().to_string();
 
     let (app2, _) = build_app().await;
@@ -414,12 +412,16 @@ async fn test_login_then_logout() {
         .unwrap();
     assert_eq!(logout.status(), StatusCode::OK);
 
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(logout.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(logout.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
-    assert!(body.get("status").and_then(|s| s.as_bool()).unwrap_or(false));
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(body
+        .get("status")
+        .and_then(|s| s.as_bool())
+        .unwrap_or(false));
 }
 
 #[tokio::test]
@@ -441,11 +443,12 @@ async fn test_login_then_refresh() {
         .await
         .unwrap();
     assert_eq!(login.status(), StatusCode::OK);
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(login.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(login.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
     let refresh_token = body["refreshToken"].as_str().unwrap().to_string();
 
     let (app2, _) = build_app().await;
@@ -524,11 +527,12 @@ async fn test_revoked_token_rejected() {
         )
         .await
         .unwrap();
-    let body: serde_json::Value =
-        serde_json::from_slice(&axum::body::to_bytes(login.into_body(), usize::MAX)
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(login.into_body(), usize::MAX)
             .await
-            .unwrap())
-        .unwrap();
+            .unwrap(),
+    )
+    .unwrap();
     let token = body["token"].as_str().unwrap().to_string();
 
     // Revoke sessions directly in Redis

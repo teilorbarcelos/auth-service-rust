@@ -1,8 +1,7 @@
 use auth_service_rust::{
     config::AppConfig,
     infra::{cache::Cache, database},
-    middleware,
-    modules,
+    middleware, modules,
 };
 use axum::Router;
 use std::net::SocketAddr;

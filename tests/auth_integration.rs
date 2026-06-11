@@ -3,10 +3,7 @@ use auth_service_rust::{
     errors::AppError,
     infra::{auth::AuthService, cache::Cache},
     middleware::auth::CurrentUser,
-    modules::auth::{
-        schemas::LoginRequest,
-        service::AuthModuleService,
-    },
+    modules::auth::{schemas::LoginRequest, service::AuthModuleService},
 };
 use axum::response::IntoResponse;
 use sea_orm::ColumnTrait;
@@ -20,10 +17,7 @@ async fn connect_db(config: &AppConfig) -> DatabaseConnection {
 
 /// Cria um usuário temporário para testes isolados (cada teste tem seu próprio user).
 /// Retorna o email e a senha criados.
-async fn create_test_user(
-    db: &DatabaseConnection,
-    tag: &str,
-) -> (String, String, String) {
+async fn create_test_user(db: &DatabaseConnection, tag: &str) -> (String, String, String) {
     let uid: String = uuid::Uuid::new_v4().to_string().chars().take(32).collect();
     let email = format!("test-{}-{}@test.com", tag, uid);
     let password = "test-pass-123";
@@ -130,8 +124,8 @@ async fn test_token_generation_and_verification() {
     )
     .expect("Should generate tokens");
 
-    let claims = AuthService::verify_token(&access, &config.jwt_secret)
-        .expect("Should verify token");
+    let claims =
+        AuthService::verify_token(&access, &config.jwt_secret).expect("Should verify token");
     assert_eq!(claims.sub, "test-user-id");
     assert_eq!(claims.email, "test@example.com");
     assert_eq!(claims.role, "admin");
@@ -154,8 +148,7 @@ async fn test_token_claims_structure() {
     )
     .expect("Should generate token");
 
-    let claims =
-        AuthService::verify_token(&access, &config.jwt_secret).expect("Should verify");
+    let claims = AuthService::verify_token(&access, &config.jwt_secret).expect("Should verify");
 
     assert_eq!(claims.sub, "test-sub");
     assert_eq!(claims.email, "test@test.com");
@@ -240,14 +233,9 @@ async fn test_current_user_creation() {
 async fn test_generate_tokens_wrong_secret() {
     let config = AppConfig::load();
 
-    let (token, _) = AuthService::generate_tokens(
-        "user",
-        "user@test.com",
-        "role",
-        &config.jwt_secret,
-        3600,
-    )
-    .expect("Should generate");
+    let (token, _) =
+        AuthService::generate_tokens("user", "user@test.com", "role", &config.jwt_secret, 3600)
+            .expect("Should generate");
 
     // Verify with wrong secret should fail
     let result = AuthService::verify_token(&token, "different-secret");
@@ -322,10 +310,7 @@ async fn test_refresh_token_cycle() {
     assert!(!refreshed.refresh_token.is_empty());
 
     delete_test_user(&db, &login.user.id).await;
-    cache
-        .invalidate_user_sessions(&login.user.id)
-        .await
-        .ok();
+    cache.invalidate_user_sessions(&login.user.id).await.ok();
 }
 
 #[tokio::test]
@@ -356,10 +341,7 @@ async fn test_get_me_after_login() {
     assert_eq!(me.user.email, email);
 
     delete_test_user(&db, &login.user.id).await;
-    cache
-        .invalidate_user_sessions(&login.user.id)
-        .await
-        .ok();
+    cache.invalidate_user_sessions(&login.user.id).await.ok();
 }
 
 #[tokio::test]
@@ -548,7 +530,14 @@ async fn test_login_inactive_role() {
     let cache = Cache::new(&config.redis_url);
 
     // Create a test role with active=false
-    let role_id = format!("tr-{}", uuid::Uuid::new_v4().to_string().chars().take(30).collect::<String>());
+    let role_id = format!(
+        "tr-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .chars()
+            .take(30)
+            .collect::<String>()
+    );
     let role = auth_service_rust::models::role::ActiveModel {
         id: Set(role_id.clone()),
         name: Set("Inactive Role".to_string()),
@@ -646,7 +635,10 @@ async fn test_login_missing_auth_record() {
 
     // Login should fail because auth record is inactive
     let result = AuthModuleService::login(
-        LoginRequest { email, password: "test-pass".to_string() },
+        LoginRequest {
+            email,
+            password: "test-pass".to_string(),
+        },
         &db,
         &cache,
         &config,
