@@ -5,15 +5,15 @@
       "command": "make infra-up"
     },
     {
-      "name": "🚀 Start Rust Backend (Dev Server)",
+      "name": "🚀 Start Auth Service (Dev)",
       "command": "make dev"
     },
     {
-      "name": "🔍 Verify Code Integrity (Cargo Check)",
+      "name": "🔍 Verify Code (Cargo Check)",
       "command": "make check"
     },
     {
-      "name": "🔎 Build Production Binary",
+      "name": "📦 Build Production Binary",
       "command": "make build"
     },
     {
@@ -23,14 +23,6 @@
     {
       "name": "🧹 Complete Clean (Volumes & Images)",
       "command": "make infra-clean"
-    },
-    {
-      "name": "⚙️ Run CRUD Generator",
-      "command": "cargo run --bin generator"
-    },
-    {
-      "name": "⚙️ Run Storage Provider Generator",
-      "command": "make generate-storage"
     }
   ],
   "replacements": []

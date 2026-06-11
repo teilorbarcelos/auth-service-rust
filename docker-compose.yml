@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: backend_rust_db
+    container_name: auth_service_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgrespw
@@ -20,16 +20,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: backend_rust_app
+    container_name: auth_service_app
     ports:
-      - "8888:8888"
+      - "8001:8001"
     environment:
-      - PORT=8888
+      - PORT=8001
       - HOST=0.0.0.0
       - ENVIRONMENT=local
       - DEBUG=true
       - DATABASE_URL=postgresql://postgres:postgrespw@db:5432/backend_rust?schema=public
-      - DATABASE_URL_AUDIT=postgresql://postgres:postgrespw@db:5432/backend_rust?schema=audit
       - JWT_SECRET=local-development-secret-key
     depends_on:
       db:
