@@ -1,9 +1,7 @@
-use crate::core::query_parser::{FilterDefinition, OrderDefinition, SearchDefinition};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use utoipa::ToSchema;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq, Serialize, Deserialize)]
 #[sea_orm(schema_name = "public", table_name = "User")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
@@ -56,50 +54,6 @@ impl Related<super::role::Entity> for Entity {
 }
 
 impl ActiveModelBehavior for ActiveModel {}
-
-crate::impl_crud_traits!(
-    Entity,
-    ActiveModel,
-    Column::IsDeleted,
-    Column::Active,
-    "Usuário não encontrado",
-    |_| "E-mail já cadastrado no sistema".to_string(),
-    |_| "E-mail já está sendo utilizado por outro usuário".to_string(),
-    {
-        let mut filter_defs = vec![
-            FilterDefinition::contains("name", (Entity, Column::Name)),
-            FilterDefinition::contains("email", (Entity, Column::Email)),
-            FilterDefinition::boolean("active", (Entity, Column::Active)),
-            FilterDefinition::contains(
-                "Role.name",
-                (super::role::Entity, super::role::Column::Name),
-            ),
-        ];
-        filter_defs.extend(FilterDefinition::date_range(
-            "createdAt",
-            (Entity, Column::CreatedAt),
-        ));
-        filter_defs.extend(FilterDefinition::date_range(
-            "updatedAt",
-            (Entity, Column::UpdatedAt),
-        ));
-        filter_defs
-    },
-    vec![
-        SearchDefinition::contains("name", (Entity, Column::Name)),
-        SearchDefinition::contains("email", (Entity, Column::Email)),
-        SearchDefinition::contains(
-            "Role.name",
-            (super::role::Entity, super::role::Column::Name)
-        ),
-    ],
-    vec![
-        OrderDefinition::case_insensitive("name", (Entity, Column::Name)),
-        OrderDefinition::case_insensitive("email", (Entity, Column::Email)),
-        OrderDefinition::column("createdAt", (Entity, Column::CreatedAt)),
-    ],
-    Column::CreatedAt
-);
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: backend_rust_db_infra
+    container_name: auth_service_db_infra
     restart: "no"
     environment:
       POSTGRES_USER: postgres
@@ -19,25 +19,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: backend_rust_redis_infra
+    container_name: auth_service_redis_infra
     restart: "no"
     ports:
       - "6379:6379"
     volumes:
       - redis_data:/data
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    container_name: backend_rust_rabbitmq_infra
-    restart: "no"
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-
 volumes:
   postgres_data:
   redis_data:
-  rabbitmq_data:

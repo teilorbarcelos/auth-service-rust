@@ -1,15 +1,9 @@
-use axum::Router;
-use backend_rust::{
+use auth_service_rust::{
     config::AppConfig,
-    infra::{
-        bootstrap::bootstrap_database, cache::Cache, database, messaging::MessagingProvider,
-        storage::StorageProvider,
-    },
-    middleware,
-    migration::Migrator,
-    modules,
+    infra::{cache::Cache, database},
+    middleware, modules,
 };
-use sea_orm_migration::MigratorTrait;
+use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
@@ -43,10 +37,13 @@ async fn shutdown_signal() {
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
         .init();
 
-    tracing::info!("🚀 Iniciando Mage Backend Boilerplate (Rust)...");
+    tracing::info!("🚀 Iniciando Auth Service (Rust)...");
 
     let config = AppConfig::load();
 
@@ -72,45 +69,6 @@ async fn main() {
         }
     };
 
-    {
-        let mut retries = 5;
-        loop {
-            match Migrator::up(&db, None).await {
-                Ok(_) => break,
-                Err(e) if retries > 0 => {
-                    tracing::warn!(
-                        "Falha ao executar migrações: {}. Tentativas restantes: {}",
-                        e,
-                        retries
-                    );
-                    retries -= 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
-                Err(e) => panic!("Falha fatal ao executar migrações do banco de dados: {}", e),
-            }
-        }
-    }
-    tracing::info!("✅ Migrações aplicadas com sucesso!");
-
-    {
-        let mut retries = 5;
-        loop {
-            match bootstrap_database(&db).await {
-                Ok(_) => break,
-                Err(e) if retries > 0 => {
-                    tracing::warn!(
-                        "Falha ao executar bootstrap: {}. Tentativas restantes: {}",
-                        e,
-                        retries
-                    );
-                    retries -= 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
-                Err(e) => panic!("Falha fatal ao executar bootstrap do banco de dados: {}", e),
-            }
-        }
-    }
-
     let cache = Cache::new(&config.redis_url);
     {
         let mut retries = 5;
@@ -134,51 +92,6 @@ async fn main() {
         }
     }
     tracing::info!("✅ Conexão com Redis Cache estabelecida.");
-
-    {
-        let mut retries = 5;
-        loop {
-            match MessagingProvider::init(&config).await {
-                Ok(_) => break,
-                Err(e) if retries > 0 => {
-                    tracing::warn!(
-                        "Falha ao conectar com RabbitMQ: {}. Tentativas restantes: {}",
-                        e,
-                        retries
-                    );
-                    retries -= 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
-                Err(e) => panic!("Falha fatal ao inicializar provedor RabbitMQ: {}", e),
-            }
-        }
-    }
-
-    if config.messaging_enabled {
-        tracing::info!("✅ Conexão com RabbitMQ estabelecida.");
-    } else {
-        tracing::info!("ℹ️ Integração com RabbitMQ desabilitada via configurações.");
-    }
-
-    {
-        let mut retries = 5;
-        loop {
-            match StorageProvider::init(&config).await {
-                Ok(_) => break,
-                Err(e) if retries > 0 => {
-                    tracing::warn!(
-                        "Falha ao inicializar StorageProvider: {}. Tentativas restantes: {}",
-                        e,
-                        retries
-                    );
-                    retries -= 1;
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                }
-                Err(e) => panic!("Falha fatal ao inicializar o provedor de storage: {}", e),
-            }
-        }
-    }
-    tracing::info!("✅ Conexão com Storage Provider estabelecida.");
 
     let api_router = modules::app_router(db.clone(), cache.clone(), config.clone());
     let obs_router = modules::observability::router(db.clone(), cache.clone());
@@ -207,46 +120,17 @@ async fn main() {
     let app = Router::new()
         .merge(api_router)
         .merge(obs_router)
-        .nest_service("/uploads", tower_http::services::ServeDir::new("uploads"))
-        .layer(axum::middleware::from_fn_with_state(
-            db.clone(),
-            middleware::error_log::error_logging_middleware,
-        ))
-        .layer(axum::middleware::from_fn_with_state(
-            db.clone(),
-            middleware::audit::audit_middleware,
-        ))
-        .layer(axum::middleware::from_fn_with_state(
-            cache.clone(),
-            middleware::rate_limit::rate_limit_middleware,
-        ))
         .layer(axum::middleware::from_fn(
             middleware::request_log::request_logging_middleware,
-        ))
-        .layer(axum::middleware::from_fn(
-            modules::observability::track_metrics_middleware,
         ))
         .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
-    tracing::info!(
-        "⚡ Servidor rodando com sucesso no endereço http://{}",
-        addr
-    );
-    tracing::info!(
-        "📖 Documentação Swagger disponível em http://{}/v1/docs",
-        addr
-    );
+    tracing::info!("⚡ Auth Service rodando em http://{}", addr);
 
     let listener = TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
-
-    if config.messaging_enabled {
-        if let Err(e) = MessagingProvider::get().disconnect().await {
-            tracing::error!("Erro ao desconectar RabbitMQ graciosamente: {}", e);
-        }
-    }
 }
